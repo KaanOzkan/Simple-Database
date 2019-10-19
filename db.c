@@ -103,10 +103,11 @@ void* row_slot(Table* table, uint32_t row_num) {
 
 void print_prompt() { printf("db > "); }
 
+void close_input_buffer(InputBuffer* input_buffer) { free(input_buffer); }
+
 void read_input(InputBuffer *input_buffer) {
     ssize_t bytes_read =
         getline(&(input_buffer->buffer), &(input_buffer->buffer_length), stdin);
-
     if (bytes_read <= 0) {
         printf("Error reading input");
         exit(EXIT_FAILURE);
@@ -117,8 +118,17 @@ void read_input(InputBuffer *input_buffer) {
     input_buffer->buffer[bytes_read - 1] = 0;
 }
 
-MetaCommandResult do_meta_command(InputBuffer *input_buffer) {
+void free_table(Table* table) {
+    for(int i = 0; table->pages[i]; i++) {
+        free(table->pages[i]);
+    }
+    free(table);
+}
+
+MetaCommandResult do_meta_command(InputBuffer *input_buffer, Table *table) {
     if (strcmp(input_buffer->buffer, ".exit") == 0) {
+        close_input_buffer(input_buffer);
+        free_table(table);
         exit(EXIT_SUCCESS);
     } else {
         return META_COMMAND_UNRECOGNIZED_COMMAND;
@@ -171,7 +181,7 @@ ExecuteResult execute_statement(Statement* statement, Table* table) {
         case (STATEMENT_INSERT):
             return execute_insert(statement, table);
         case (STATEMENT_SELECT):
-            return execute_statement(statement, table);
+            return execute_select(statement, table);
     }
 }
 
@@ -185,13 +195,6 @@ Table* new_table() {
     return table;
 }
 
-void free_table(Table* table) {
-    for(int i = 0; table->pages[i]; i++) {
-        free(table->pages[i]);
-    }
-    free(table);
-}
-
 int main(int argc, char *argv[]) {
     Table* table = new_table();
     InputBuffer *input_buffer = new_input_buffer();
@@ -200,7 +203,7 @@ int main(int argc, char *argv[]) {
         read_input(input_buffer);
 
         if (input_buffer->buffer[0] == '.') {
-            switch (do_meta_command(input_buffer)) {
+            switch (do_meta_command(input_buffer, table)) {
                 case (META_COMMAND_SUCCESS):
                     continue;
                 case (META_COMMAND_UNRECOGNIZED_COMMAND):
